@@ -158,48 +158,48 @@ class CrossAttention(nn.Module):
         # s : square root of number of regions
         # k : number of connections
         
-        s=5
-        s1=15
+        sq=25
+        sk=15
         topk=12
         
         
-        temp=q.shape[-2]//(s**2)
-        temp1=k.shape[-2]//(s1)
+        temp=q.shape[-2]//(sq)
+        temp1=k.shape[-2]//(sk)
         # Dividing in region
-        q = rearrange(q, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp)     #(b,n, s^2,HW/s^2,d)
-        k = rearrange(k, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp1)    #(b,n, s^2,hw/s^2,d)
-        v = rearrange(v, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp1)    #(b,n, s^2,hw/s^2,d)
+        q = rearrange(q, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp)     #(b,n, sq,HW/sq,d)
+        k = rearrange(k, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp1)    #(b,n, sk,hw/sk,d)
+        v = rearrange(v, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp1)    #(b,n, sk,hw/sk,d)
         
         # Regional Query and key
-        q_r,k_r=q.mean(dim=-2), k.mean(dim=-2)   #(b,n,s^2,d)
+        q_r,k_r=q.mean(dim=-2), k.mean(dim=-2)   #(b,n,sq,d)  #(b,n, sk,d)
         
         #Adjacency matrix
-        a_r=torch.einsum('b n q d, b n k d -> b n q k', q_r, k_r)      #b n s^2 s^2
+        a_r=torch.einsum('b n q d, b n k d -> b n q k', q_r, k_r)      #b n sq sk
         
         #compute index matrix for regional graph
-        topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, s^2, k), (b,n, s^2, k)  
-        r_weight = self.routing_act(topk_attn_logit) # (b,n, s^2, k)
+        topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, sq, k), (b,n, sq, k)  
+        r_weight = self.routing_act(topk_attn_logit) # (b,n, sq, k)
         i_r=topk_index
         
-        b,n,s2,l,d=k.shape
+        b,n,sk,l,d=k.shape
         # Gather keys and values
-        k_temp=k.view(b, n, 1,s2, l, d).expand(-1,-1, s2, -1, -1, -1)
-        v_temp=v.view(b, n, 1,s2, l, d).expand(-1,-1, s2, -1, -1, -1)
-        i=i_r.view(b,n,s2,topk, 1,1).expand(-1, -1, -1, -1,l,d)
-        k_g=torch.gather(k_temp,i)  #(b,n,s^2,k,hw/s^2,d)
-        v_g=torch.gather(v_temp,i)  #(b,n,s^2,k,hw/s^2,d)
-        k_g = rearrange(k_g, 'b n s t l d -> b n s (t l) d')  #(b,n,s^2,k*hw/s^2,d)
-        v_g = rearrange(v_g, 'b n s t l d -> b n s (t l) d')  #(b,n,s^2,k*hw/s^2,d)
+        k_temp=k.view(b, n, 1,sk, l, d).expand(-1,-1, sq, -1, -1, -1)
+        v_temp=v.view(b, n, 1,sk, l, d).expand(-1,-1, sq, -1, -1, -1)
+        i=i_r.view(b,n,sq,topk, 1,1).expand(-1, -1, -1, -1,l,d)
+        k_g=torch.gather(k_temp,-3,i)  #(b,n,sq,k,hw/sk,d)
+        v_g=torch.gather(v_temp,-3,i)  #(b,n,sq,k,hw/sk,d)
+        k_g = rearrange(k_g, 'b n s t l d -> b n s (t l) d')  #(b,n,sq,k*hw/sk,d)
+        v_g = rearrange(v_g, 'b n s t l d -> b n s (t l) d')  #(b,n,sq,k*hw/sk,d)
         
         # Token-to-token atterntion
-        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q, k_g)  #(b,n,s^2,HW/s^2,k*hw/s^2)
-        dot = rearrange(dot, 'b n s Q k -> b s Q (n k)')
-        att = dot.softmax(dim=-1)
+        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
+        dot = rearrange(dot, 'b n s Q k -> b s Q (n k)') #(b,sq,HW/sq,n*k*hw/sk)
+        att = dot.softmax(dim=-1)  #(b,sq,HW/sq,n*k*hw/sk)
         
         # Combine values (image level features).
-        v_g=rearrange(v_g, 'b n s k d -> b s (n k) d')
-        a = torch.einsum('b s Q K, b s K d -> b s Q d', att, v_g)
-        a=rearrange(a, 'b s Q d -> b (s Q) d')
+        v_g=rearrange(v_g, 'b n s k d -> b s (n k) d')  #(b,sq,n*k*hw/sk,d)
+        a = torch.einsum('b s Q K, b s K d -> b s Q d', att, v_g)  #(b,sq,HW/sq,d)
+        a=rearrange(a, 'b s Q d -> b (s Q) d')   #(b,HW,d)
         a = rearrange(a, '(b m) ... d -> b ... (m d)', m=self.heads, d=self.dim_head)
         
         
