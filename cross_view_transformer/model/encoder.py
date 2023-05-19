@@ -1,5 +1,5 @@
 import torch
-`import torch.nn as nn`
+import torch.nn as nn
 import torch.nn.functional as F
 
 from einops import rearrange, repeat
@@ -158,11 +158,13 @@ class CrossAttention(nn.Module):
         # s : square root of number of regions
         # k : number of connections
         
-        s=8
-        topk=4
+        s=5
+        s1=15
+        topk=12
+        
         
         temp=q.shape[-2]//(s**2)
-        temp1=k.shape[-2]//(s**2)
+        temp1=k.shape[-2]//(s1)
         # Dividing in region
         q = rearrange(q, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp)     #(b,n, s^2,HW/s^2,d)
         k = rearrange(k, 'b n (t2 t1) d -> b n t2 t1 d',t1=temp1)    #(b,n, s^2,hw/s^2,d)
@@ -172,7 +174,7 @@ class CrossAttention(nn.Module):
         q_r,k_r=q.mean(dim=-2), k.mean(dim=-2)   #(b,n,s^2,d)
         
         #Adjacency matrix
-        a_r=torch.einsum('b n q d, b n k d -> b n Q K', q_r, k_r)      #b n s^2 s^2
+        a_r=torch.einsum('b n q d, b n k d -> b n q k', q_r, k_r)      #b n s^2 s^2
         
         #compute index matrix for regional graph
         topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, s^2, k), (b,n, s^2, k)  
