@@ -160,7 +160,7 @@ class CrossAttention(nn.Module):
         
         sq=25
         sk=15
-        topk=12
+        topk=8
         
         
         temp=q.shape[-2]//(sq)
