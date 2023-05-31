@@ -180,11 +180,16 @@ class CrossAttention(nn.Module):
         #compute index matrix for regional graph
         topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, sq, k), (b,n, sq, k)  
         # ---------------------------------------------------------------------
-        max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
-        _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2)#select topk query
-        q_inf=torch.zeros(b,n,sq,l_q,d_q)+float('-inf') #all q set to -inf
-        i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
-        q_g=q_inf.scatter_(-3,i,q) #masked querry with just topk_qr elem
+        with torch.no_grad():
+            max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
+            _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2)#select topk query
+
+            q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
+            q_inf=q_inf+float('-inf')#all q set to -inf
+            i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
+            mask=q_inf.scatter_(-3,i,0) #masked querry with just topk_qr elem
+        
+        q=q+mask
         # ---------------------------------------------------------------------- 
         r_weight = self.routing_act(topk_attn_logit) # (b,n, sq, k)
         i_r=topk_index
