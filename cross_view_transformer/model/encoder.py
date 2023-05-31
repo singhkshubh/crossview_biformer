@@ -160,7 +160,8 @@ class CrossAttention(nn.Module):
         
         sq=25
         sk=15
-        topk=8
+        topk=15
+        topk_q=6
         
         
         temp=q.shape[-2]//(sq)
@@ -175,9 +176,16 @@ class CrossAttention(nn.Module):
         
         #Adjacency matrix
         a_r=torch.einsum('b n q d, b n k d -> b n q k', q_r, k_r)      #b n sq sk
-        
+        b,n,sq,l_q,d_q=q.shape
         #compute index matrix for regional graph
         topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, sq, k), (b,n, sq, k)  
+        # ---------------------------------------------------------------------
+        max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
+        _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2)#select topk query
+        q_inf=q+float('-inf') #all q set to -inf
+        i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
+        q_g=q_inf.scatter_(-3,i,q) #masked querry with just topk_qr elem
+        # ---------------------------------------------------------------------- 
         r_weight = self.routing_act(topk_attn_logit) # (b,n, sq, k)
         i_r=topk_index
         
@@ -192,7 +200,7 @@ class CrossAttention(nn.Module):
         v_g = rearrange(v_g, 'b n s t l d -> b n s (t l) d')  #(b,n,sq,k*hw/sk,d)
         
         # Token-to-token atterntion
-        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
+        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q_g, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
         dot = rearrange(dot, 'b n s Q k -> b s Q (n k)') #(b,sq,HW/sq,n*k*hw/sk)
         att = dot.softmax(dim=-1)  #(b,sq,HW/sq,n*k*hw/sk)
         
