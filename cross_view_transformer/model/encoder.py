@@ -205,7 +205,7 @@ class CrossAttention(nn.Module):
         v_g = rearrange(v_g, 'b n s t l d -> b n s (t l) d')  #(b,n,sq,k*hw/sk,d)
         
         # Token-to-token atterntion
-        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q_g, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
+        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
         dot = rearrange(dot, 'b n s Q k -> b s Q (n k)') #(b,sq,HW/sq,n*k*hw/sk)
         att = dot.softmax(dim=-1)  #(b,sq,HW/sq,n*k*hw/sk)
         
