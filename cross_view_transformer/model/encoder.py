@@ -161,7 +161,7 @@ class CrossAttention(nn.Module):
         sq=25
         sk=15
         topk=15
-        topk_q=6
+        topk_q=16
         
         
         temp=q.shape[-2]//(sq)
@@ -180,14 +180,14 @@ class CrossAttention(nn.Module):
         #compute index matrix for regional graph
         topk_attn_logit, topk_index = torch.topk(a_r, k=topk, dim=-1) # (b, n, sq, k), (b,n, sq, k)  
         # ---------------------------------------------------------------------
-        with torch.no_grad():
-            max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
-            _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2)#select topk query
+        
+        max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
+        _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2,largest=False)#select topk query
 
-            q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
-            q_inf=q_inf+float('-inf')#all q set to -inf
-            i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
-            mask=q_inf.scatter_(-3,i,0) #masked querry with just topk_qr elem
+        q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
+        # q_inf=q_inf+float('-1000')#all q set to -inf
+        i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
+        mask=q_inf.scatter_(-3,i,-10000) #masked querry with just topk_qr elem
         
         q_g=q+mask
         # ---------------------------------------------------------------------- 
