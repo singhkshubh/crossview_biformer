@@ -183,13 +183,13 @@ class CrossAttention(nn.Module):
         
         max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
         _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2,largest=False)#select topk query
-
-        q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
+        q_temp=q
+        # q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
         # q_inf=q_inf+float('-1000')#all q set to -inf
         i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
-        mask=q_inf.scatter_(-3,i,-10000) #masked querry with just topk_qr elem
+        q=q_temp.scatter_add_(-3,i,float('-inf')) #masked querry with just topk_qr elem
         
-        q_g=q+mask
+        # q_g=q+mask
         # ---------------------------------------------------------------------- 
         r_weight = self.routing_act(topk_attn_logit) # (b,n, sq, k)
         i_r=topk_index
@@ -205,7 +205,7 @@ class CrossAttention(nn.Module):
         v_g = rearrange(v_g, 'b n s t l d -> b n s (t l) d')  #(b,n,sq,k*hw/sk,d)
         
         # Token-to-token atterntion
-        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q_g, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
+        dot = self.scale*torch.einsum('b n s Q d, b n s K d -> b n s Q K', q, k_g)  #(b,n,sq,HW/sq,k*hw/sk)
         dot = rearrange(dot, 'b n s Q k -> b s Q (n k)') #(b,sq,HW/sq,n*k*hw/sk)
         att = dot.softmax(dim=-1)  #(b,sq,HW/sq,n*k*hw/sk)
         
