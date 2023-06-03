@@ -183,11 +183,11 @@ class CrossAttention(nn.Module):
         
         max_qk,_=torch.max(a_r,-1,keepdim=True) #max value of attention for each query across all key
         _,topk_qr=torch.topk(max_qk, k=topk_q, dim=-2,largest=False)#select topk query
-        q_temp=q
+        
         # q_inf=torch.zeros(b,n,sq,l_q,d_q).cuda()
         # q_inf=q_inf+float('-1000')#all q set to -inf
         i=topk_qr.view(b, n, topk_q, 1,1).expand(-1, -1, -1,l_q, d_q)
-        q=q_temp.scatter_add_(-3,i,float('-inf')) #masked querry with just topk_qr elem
+        q.scatter_add_(-3,i,float('-inf')) #masked querry with just topk_qr elem
         
         # q_g=q+mask
         # ---------------------------------------------------------------------- 
